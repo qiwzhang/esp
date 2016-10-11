@@ -31,3 +31,13 @@ sh_binary(
     ],
     visibility = ["//visibility:public"],
 )
+
+cc_library(
+    name = "ssl",
+    linkopts = [
+        "-lcrypto",
+        "-lssl",
+        "-ldl",
+    ],
+    visibility = ["//visibility:public"],
+)

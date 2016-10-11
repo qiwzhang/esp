@@ -1,0 +1,39 @@
+genrule(
+    name = "config",
+    srcs = glob([
+        "**/*",
+    ]),
+    outs = [
+        "config.h",
+    ],
+    tools = [
+        "configure",
+    ],
+    cmd = ' '.join([
+        "$(location configure) --enable-lib-only --enable-shared=no",
+        "&& cp config.h $@",
+    ]),
+)
+
+cc_library(
+    name = "nghttp2",
+    srcs = glob([
+        "lib/*.c",
+        "lib/*.h",
+    ]) + ["config.h"],
+    hdrs = glob([
+        "lib/includes/nghttp2/*.h",
+    ]),
+    copts = [
+        "-DHAVE_CONFIG_H",
+        "-DBUILDING_NGHTTP2",
+        "-Iexternal/nghttp2_tar",
+#        "-Ithird_party/nghttp2/lib",
+#        "-Ithird_party/nghttp2/lib/includes",
+    ],
+    includes = [
+        ".",
+        "lib/includes",
+    ],
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,121 @@
+genrule(
+    name = "config",
+    srcs = glob([
+        "**/*",
+    ]),
+    outs = [
+        "config.h",
+    ],
+    tools = [
+        "configure",
+    ],
+    cmd = ' '.join([
+        "$(location configure) --enable-shared=no --disable-libevent-regress",
+        "CPPFLAGS=-I/usr/local/include LDFLAGS=-L/usr/local/lib OPENSSL_LIBADD=-ldl",
+        "&& cp config.h $@",
+    ]),
+)
+
+genrule(
+    name = "event-config",
+    srcs = [
+        "config.h",
+        "make-event-config.sed",
+    ],
+    outs = [
+        "include/event2/event-config.h",
+    ],
+    cmd = "sed -f $(location make-event-config.sed) < $(location config.h) > $@",
+)
+
+event_srcs = [
+    "buffer.c",
+    "bufferevent.c",
+    "bufferevent_filter.c",
+    "bufferevent_openssl.c",
+    "bufferevent_pair.c",
+    "bufferevent_ratelim.c",
+    "bufferevent_sock.c",
+    "epoll.c",
+    "evdns.c",
+    "event.c",
+    "event_tagging.c",
+    "evmap.c",
+    "evrpc.c",
+    "evthread.c",
+    "evutil.c",
+    "evutil_rand.c",
+    "http.c",
+    "listener.c",
+    "log.c",
+    "poll.c",
+    "select.c",
+    "signal.c",
+    "strlcpy.c",
+    ":event-config",
+] + glob(["*.h"])
+
+
+event_pthread_srcs = [
+    "evthread_pthread.c",
+    ":event-config",
+]
+
+cc_library(
+    name = "event",
+    hdrs = glob(["include/**/*.h"]) + [
+        "arc4random.c",  # arc4random.c is included by evutil_rand.c
+        "bufferevent-internal.h",
+        "defer-internal.h",
+        "evbuffer-internal.h",
+        "event-internal.h",
+        "event.h",
+        "evthread-internal.h",
+        "evutil.h",
+        "http-internal.h",
+        "iocp-internal.h",
+        "ipv6-internal.h",
+        "log-internal.h",
+        "minheap-internal.h",
+        "mm-internal.h",
+        "strlcpy-internal.h",
+        "util-internal.h",
+        "compat/sys/queue.h",
+    ],
+    srcs = event_srcs,
+    includes = [
+        "include",
+        "compat",
+    ],
+    copts = [
+        "-w",
+        "-DHAVE_CONFIG_H",
+    ],
+    defines = [
+        "_EVENT_HAVE_OPENSSL",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "event_pthreads",
+    srcs = event_pthread_srcs + ["include/event2/thread.h"],
+    hdrs = [
+        "evthread-internal.h",
+        "compat/sys/queue.h",
+    ],
+    copts = [
+        "-w",
+        "-DHAVE_CONFIG_H",
+    ],
+    includes = [
+        "include",
+        "compat",
+    ],
+    deps = [
+        ":event",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+

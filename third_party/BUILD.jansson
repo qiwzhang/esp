@@ -1,0 +1,35 @@
+genrule(
+    name = "config",
+    srcs = glob([
+        "**/*",
+    ]),
+    outs = [
+        "src/jansson_private_config.h",
+    ],
+    tools = [
+        "configure",
+    ],
+    cmd = ' '.join([
+        "$(location configure) --enable-shared=no",
+        "&& cp jansson_private_config.h $@",
+    ]),
+)
+
+cc_library(
+    name = "jansson",
+    srcs = glob([
+        "src/*.c",
+        "src/*.h",
+    ]),
+    hdrs = [
+        "src/jansson_private_config.h",
+        "src/jansson.h",
+    ],
+    copts = [
+        "-DHAVE_CONFIG_H",
+    ],
+    includes = [
+        "src",
+    ],
+    visibility = ["//visibility:public"],
+)
