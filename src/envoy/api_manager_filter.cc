@@ -6,6 +6,7 @@
 #include "server/config/network/http_connection_manager.h"
 #include "include/api_manager/api_manager.h"
 #include "common/http/headers.h"
+#include "common/http/utility.h"
 #include "api_manager_env.h"
 
 namespace Http {
@@ -150,8 +151,7 @@ class Instance : public Http::StreamDecoderFilter, public Logger::Loggable<Logge
     log().notice("Called ApiManager::Instance : check complete {}", status.ToJson());
     if (!status.ok()) {
       state_ = Responded;
-      HeaderMapPtr response { new HeaderMapImpl(BadRequest) };
-      callbacks_->encodeHeaders(std::move(response), true);
+      Utility::sendLocalReply(*callbacks_, Code(status.HttpCode()), status.ToJson());
       return;
     }
     state_ = Complete;
