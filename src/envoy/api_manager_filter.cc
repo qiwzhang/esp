@@ -1,18 +1,18 @@
 #include "precompiled/precompiled.h"
 
+#include "api_manager_env.h"
 #include "common/common/logger.h"
-#include "envoy/server/instance.h"
 #include "common/http/filter/ratelimit.h"
-#include "server/config/network/http_connection_manager.h"
-#include "include/api_manager/api_manager.h"
 #include "common/http/headers.h"
 #include "common/http/utility.h"
-#include "api_manager_env.h"
+#include "envoy/server/instance.h"
+#include "include/api_manager/api_manager.h"
+#include "server/config/network/http_connection_manager.h"
 
 namespace Http {
 namespace ApiManager {
 
-std::string ReadFile(const std::string &file_name) {
+std::string ReadFile(const std::string& file_name) {
   std::ifstream t(file_name);
   std::string content((std::istreambuf_iterator<char>(t)),
                       std::istreambuf_iterator<char>());
@@ -24,16 +24,18 @@ class Config : public Logger::Loggable<Logger::Id::http> {
   google::api_manager::ApiManagerFactory api_manager_factory_;
   std::shared_ptr<google::api_manager::ApiManager> api_manager_;
   Upstream::ClusterManager& cm_;
+
  public:
   Config(const Json::Object& config, Upstream::ClusterManager& cm) : cm_(cm) {
     const std::string service_config = config.getString("service_config");
 
     std::string service_config_content = ReadFile(service_config);
 
-    std::unique_ptr<google::api_manager::ApiManagerEnvInterface> env(new Env(cm));
+    std::unique_ptr<google::api_manager::ApiManagerEnvInterface> env(
+        new Env(cm));
 
-    api_manager_ =
-        api_manager_factory_.GetOrCreateApiManager(std::move(env), service_config_content, "");
+    api_manager_ = api_manager_factory_.GetOrCreateApiManager(
+        std::move(env), service_config_content, "");
 
     api_manager_->Init();
     log().notice("Called ApiManager::Config constructor: {}", __func__);
@@ -49,10 +51,9 @@ typedef std::shared_ptr<Config> ConfigPtr;
 class Request : public google::api_manager::Request {
  private:
   HeaderMap& header_map_;
- public:
-  Request(HeaderMap& header_map) : header_map_(header_map) {
 
-  }
+ public:
+  Request(HeaderMap& header_map) : header_map_(header_map) {}
   virtual std::string GetRequestHTTPMethod() override {
     return header_map_.get(Headers::get().Method);
   }
@@ -62,14 +63,12 @@ class Request : public google::api_manager::Request {
   virtual std::string GetUnparsedRequestPath() override {
     return header_map_.get(Headers::get().Path);
   }
-  virtual std::string GetClientIP() override {
-    return "";
-  }
-  virtual bool FindQuery(const std::string &name, std::string *query) override {
+  virtual std::string GetClientIP() override { return ""; }
+  virtual bool FindQuery(const std::string& name, std::string* query) override {
     return false;
   }
-  virtual bool
-  FindHeader(const std::string &name, std::string *header) override {
+  virtual bool FindHeader(const std::string& name,
+                          std::string* header) override {
     LowerCaseString lower_key(name);
     if (header_map_.has(lower_key)) {
       *header = header_map_.get(lower_key);
@@ -77,50 +76,55 @@ class Request : public google::api_manager::Request {
     }
     return false;
   }
-  virtual google::api_manager::protocol::Protocol
-  GetRequestProtocol() override {
+  virtual google::api_manager::protocol::Protocol GetRequestProtocol()
+      override {
     return google::api_manager::protocol::Protocol::HTTP;
   }
-  virtual google::api_manager::utils::Status
-  AddHeaderToBackend(const std::string &key,
-                     const std::string &value) override {
+  virtual google::api_manager::utils::Status AddHeaderToBackend(
+      const std::string& key, const std::string& value) override {
     header_map_.addViaCopy(LowerCaseString(key), value);
     return google::api_manager::utils::Status::OK;
   }
-  virtual void SetAuthToken(const std::string &auth_token) override {
-  }
+  virtual void SetAuthToken(const std::string& auth_token) override {}
 };
 
-const Http::HeaderMapImpl BadRequest{
-    {Http::Headers::get().Status, "400"}};
+const Http::HeaderMapImpl BadRequest{{Http::Headers::get().Status, "400"}};
 
-class Instance : public Http::StreamDecoderFilter, public Logger::Loggable<Logger::Id::http> {
+class Instance : public Http::StreamFilter,
+                 public Logger::Loggable<Logger::Id::http> {
  private:
   std::shared_ptr<google::api_manager::ApiManager> api_manager_;
-  std::unique_ptr<google::api_manager::RequestHandlerInterface> request_handler_;
+  std::unique_ptr<google::api_manager::RequestHandlerInterface>
+      request_handler_;
 
   enum State { NotStarted, Calling, Complete, Responded };
   State state_;
 
-  StreamDecoderFilterCallbacks* callbacks_;
+  StreamDecoderFilterCallbacks* decoder_callbacks_;
+  StreamEncoderFilterCallbacks* encoder_callbacks_;
 
   bool initiating_call_;
+
  public:
-  Instance(ConfigPtr config) : api_manager_(config->api_manager()), state_(NotStarted), initiating_call_(false) {
+  Instance(ConfigPtr config)
+      : api_manager_(config->api_manager()),
+        state_(NotStarted),
+        initiating_call_(false) {
     log().notice("Called ApiManager::Instance : {}", __func__);
   }
 
-  FilterHeadersStatus decodeHeaders(HeaderMap& headers, bool end_stream) override {
+  FilterHeadersStatus decodeHeaders(HeaderMap& headers,
+                                    bool end_stream) override {
     log().notice("Called ApiManager::Instance : {}", __func__);
-    std::unique_ptr<google::api_manager::Request> request(
-        new Request(headers));
+    std::unique_ptr<google::api_manager::Request> request(new Request(headers));
     request_handler_ = api_manager_->CreateRequestHandler(std::move(request));
     state_ = Calling;
     initiating_call_ = true;
-    request_handler_->Check([this](google::api_manager::utils::Status status){
-      complete(status);
+    request_handler_->Check([this](google::api_manager::utils::Status status) {
+      completeCheck(status);
     });
     initiating_call_ = false;
+
     if (state_ == Complete) {
       return FilterHeadersStatus::Continue;
     }
@@ -128,13 +132,16 @@ class Instance : public Http::StreamDecoderFilter, public Logger::Loggable<Logge
     return FilterHeadersStatus::StopIteration;
   }
 
-  FilterDataStatus decodeData(Buffer::Instance& data, bool end_stream) override {
-    log().notice("Called ApiManager::Instance : {}", __func__);
+  FilterDataStatus decodeData(Buffer::Instance& data,
+                              bool end_stream) override {
+    log().notice("Called ApiManager::Instance : {} ({}, {})", __func__,
+                 data.length(), end_stream);
     if (state_ == Calling) {
       return FilterDataStatus::StopIterationAndBuffer;
     }
     return FilterDataStatus::Continue;
   }
+
   FilterTrailersStatus decodeTrailers(HeaderMap& trailers) override {
     log().notice("Called ApiManager::Instance : {}", __func__);
     if (state_ == Calling) {
@@ -142,45 +149,69 @@ class Instance : public Http::StreamDecoderFilter, public Logger::Loggable<Logge
     }
     return FilterTrailersStatus::Continue;
   }
-  void setDecoderFilterCallbacks(StreamDecoderFilterCallbacks& callbacks) override {
+  void setDecoderFilterCallbacks(
+      StreamDecoderFilterCallbacks& callbacks) override {
     log().notice("Called ApiManager::Instance : {}", __func__);
-    callbacks_ = &callbacks;
-    callbacks_->addResetStreamCallback([](){});
+    decoder_callbacks_ = &callbacks;
+    decoder_callbacks_->addResetStreamCallback(
+        [this]() { state_ = Responded; });
   }
-  void complete(const google::api_manager::utils::Status &status) {
-    log().notice("Called ApiManager::Instance : check complete {}", status.ToJson());
-    if (!status.ok()) {
+  void completeCheck(const google::api_manager::utils::Status& status) {
+    log().notice("Called ApiManager::Instance : check complete {}",
+                 status.ToJson());
+    if (!status.ok() && state_ != Responded) {
       state_ = Responded;
-      Utility::sendLocalReply(*callbacks_, Code(status.HttpCode()), status.ToJson());
+      Utility::sendLocalReply(*decoder_callbacks_, Code(status.HttpCode()),
+                              status.ToJson());
       return;
     }
     state_ = Complete;
     if (!initiating_call_) {
-      callbacks_->continueDecoding();
+      decoder_callbacks_->continueDecoding();
     }
   }
-};
 
+  virtual FilterHeadersStatus encodeHeaders(HeaderMap& headers,
+                                            bool end_stream) override {
+    log().notice("Called ApiManager::Instance : {}", __func__);
+    return FilterHeadersStatus::Continue;
+  }
+  virtual FilterDataStatus encodeData(Buffer::Instance& data,
+                                      bool end_stream) override {
+    log().notice("Called ApiManager::Instance : {}", __func__);
+    return FilterDataStatus::Continue;
+  }
+  virtual FilterTrailersStatus encodeTrailers(HeaderMap& trailers) override {
+    log().notice("Called ApiManager::Instance : {}", __func__);
+    return FilterTrailersStatus::Continue;
+  }
+  virtual void setEncoderFilterCallbacks(
+      StreamEncoderFilterCallbacks& callbacks) override {
+    log().notice("Called ApiManager::Instance : {}", __func__);
+    encoder_callbacks_ = &callbacks;
+  }
+};
 }
 }
 
 namespace Server {
 namespace Configuration {
 
-
 class ApiManagerConfig : public HttpFilterConfigFactory {
-public:
-  HttpFilterFactoryCb tryCreateFilterFactory(HttpFilterType type, const std::string& name,
-                                             const Json::Object& config, const std::string&,
-                                             Server::Instance& server) override {
-    if (type != HttpFilterType::Decoder || name != "esp") {
+ public:
+  HttpFilterFactoryCb tryCreateFilterFactory(
+      HttpFilterType type, const std::string& name, const Json::Object& config,
+      const std::string&, Server::Instance& server) override {
+    if (type != HttpFilterType::Both || name != "esp") {
       return nullptr;
     }
 
-    Http::ApiManager::ConfigPtr api_manager_config(new Http::ApiManager::Config(config, server.clusterManager()));
-    return [api_manager_config](Http::FilterChainFactoryCallbacks& callbacks) -> void {
-      callbacks.addStreamDecoderFilter(Http::StreamDecoderFilterPtr{new Http::ApiManager::Instance(
-          api_manager_config)});
+    Http::ApiManager::ConfigPtr api_manager_config(
+        new Http::ApiManager::Config(config, server.clusterManager()));
+    return [api_manager_config](
+               Http::FilterChainFactoryCallbacks& callbacks) -> void {
+      callbacks.addStreamFilter(Http::StreamFilterPtr{
+          new Http::ApiManager::Instance(api_manager_config)});
     };
   }
 };
