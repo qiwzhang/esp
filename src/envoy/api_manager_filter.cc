@@ -1,6 +1,7 @@
 #include "precompiled/precompiled.h"
 
 #include "api_manager_env.h"
+#include "common/buffer/buffer_impl.h"
 #include "common/common/logger.h"
 #include "common/http/filter/ratelimit.h"
 #include "common/http/headers.h"
@@ -88,7 +89,45 @@ class Request : public google::api_manager::Request {
   virtual void SetAuthToken(const std::string& auth_token) override {}
 };
 
-const Http::HeaderMapImpl BadRequest{{Http::Headers::get().Status, "400"}};
+class EnvoyZeroCopyInputStream
+    : public google::protobuf::io::ZeroCopyInputStream {
+ private:
+  std::deque<Buffer::RawSlice> data_;
+  std::vector<Buffer::OwnedImpl> owned_;
+
+ public:
+  void Add(Buffer::Instance& instance) {
+    owned_.emplace_back(instance);
+
+    Buffer::OwnedImpl& data = owned_.back();
+    uint64_t num = data.getRawSlices(nullptr, 0);
+    std::vector<Buffer::RawSlice> slices(num);
+    data.getRawSlices(slices.data(), num);
+
+    for (const auto& slice : slices) {
+      data_.emplace_back(slice);
+    }
+  }
+  virtual bool Next(const void** data, int* size) override {
+    if (!data_.empty()) {
+      Buffer::RawSlice slice = data_.front();
+      data_.pop_front();
+      *data = slice.mem_;
+      *size = slice.len_;
+      return true;
+    }
+    return false;
+  }
+  virtual void BackUp(int count) override {}
+  virtual bool Skip(int count) override { return false; }
+  virtual google::protobuf::int64 ByteCount() const override {
+    google::protobuf::int64 count = 0;
+    for (const auto& slice : data_) {
+      count += slice.len_;
+    }
+    return count;
+  }
+};
 
 class Instance : public Http::StreamFilter,
                  public Logger::Loggable<Logger::Id::http> {
@@ -104,6 +143,9 @@ class Instance : public Http::StreamFilter,
   StreamEncoderFilterCallbacks* encoder_callbacks_;
 
   bool initiating_call_;
+
+  std::unique_ptr<google::api_manager::transcoding::Transcoder> transcoder_;
+  EnvoyZeroCopyInputStream request_in_, response_in_;
 
  public:
   Instance(ConfigPtr config)
@@ -125,6 +167,20 @@ class Instance : public Http::StreamFilter,
     });
     initiating_call_ = false;
 
+    if (request_handler_->CanBeTranscoded()) {
+      std::string method_name = request_handler_->GetRpcMethodFullName();
+      log().notice("Called ApiManager::Instance : creatingTranscoder {}",
+                   method_name);
+
+      headers.replaceViaMoveValue(Headers::get().Method, "POST");
+      headers.replaceViaMoveValue(Headers::get().Path, std::move(method_name));
+      headers.replaceViaMoveValue(Headers::get().ContentType,
+                                  "application/grpc");
+      headers.replaceViaMove(LowerCaseString("te"), "trailers");
+
+      request_handler_->CreateTranscoder(&request_in_, &response_in_,
+                                         &transcoder_);
+    }
     if (state_ == Complete) {
       return FilterHeadersStatus::Continue;
     }
@@ -136,6 +192,18 @@ class Instance : public Http::StreamFilter,
                               bool end_stream) override {
     log().notice("Called ApiManager::Instance : {} ({}, {})", __func__,
                  data.length(), end_stream);
+    if (transcoder_) {
+      request_in_.Add(data);
+      data.drain(data.length());
+
+      auto output = transcoder_->RequestOutput();
+
+      const void* out;
+      int size;
+      while (output->Next(&out, &size)) {
+        data.add(out, size);
+      }
+    }
     if (state_ == Calling) {
       return FilterDataStatus::StopIterationAndBuffer;
     }
@@ -178,7 +246,25 @@ class Instance : public Http::StreamFilter,
   }
   virtual FilterDataStatus encodeData(Buffer::Instance& data,
                                       bool end_stream) override {
-    log().notice("Called ApiManager::Instance : {}", __func__);
+    log().notice("Called ApiManager::Instance : {} ({}, {})", __func__,
+                 data.length(), end_stream);
+    if (transcoder_) {
+      response_in_.Add(data);
+
+      data.drain(data.length());
+
+      auto output = transcoder_->ResponseOutput();
+
+      const void* out;
+      int size;
+      while (output->Next(&out, &size)) {
+        log().notice(
+            "Called ApiManager::Instance : response out {} bytes, status: {}",
+            size, transcoder_->ResponseStatus().error_code());
+        if (size == 0) break;
+        data.add(out, size);
+      }
+    }
     return FilterDataStatus::Continue;
   }
   virtual FilterTrailersStatus encodeTrailers(HeaderMap& trailers) override {
