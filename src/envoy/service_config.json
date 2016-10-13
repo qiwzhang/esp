@@ -789,6 +789,7 @@
   "usage": {
     "rules": [
       {
+        "allowUnregisteredCalls": true,
         "selector": "GetMessage"
       },
       {

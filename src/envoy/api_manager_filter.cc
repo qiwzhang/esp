@@ -29,13 +29,14 @@ class Config : public Logger::Loggable<Logger::Id::http> {
   Upstream::ClusterManager& cm_;
 
  public:
-  Config(const Json::Object& config, Upstream::ClusterManager& cm) : cm_(cm) {
+  Config(const Json::Object& config, Server::Instance& server)
+      : cm_(server.clusterManager()) {
     const std::string service_config = config.getString("service_config");
 
     std::string service_config_content = ReadFile(service_config);
 
     std::unique_ptr<google::api_manager::ApiManagerEnvInterface> env(
-        new Env(cm));
+        new Env(server));
 
     api_manager_ = api_manager_factory_.GetOrCreateApiManager(
         std::move(env), service_config_content, "");
@@ -130,6 +131,23 @@ class EnvoyZeroCopyInputStream
     return count;
   }
 };
+
+class Response : public google::api_manager::Response {
+  google::api_manager::utils::Status GetResponseStatus() {
+    return google::api_manager::utils::Status::OK;
+  }
+
+  std::size_t GetRequestSize() { return 0; }
+
+  std::size_t GetResponseSize() { return 0; }
+
+  google::api_manager::utils::Status GetLatencyInfo(
+      google::api_manager::service_control::LatencyInfo* info) {
+    return google::api_manager::utils::Status::OK;
+  }
+};
+
+const Http::HeaderMapImpl BadRequest{{Http::Headers::get().Status, "400"}};
 
 class Instance : public Http::StreamFilter,
                  public Logger::Loggable<Logger::Id::http> {
@@ -292,6 +310,14 @@ class Instance : public Http::StreamFilter,
     log().notice("Called ApiManager::Instance : {}", __func__);
     encoder_callbacks_ = &callbacks;
   }
+
+  // note: cannot extend ~ActiveStream for access log, placing it here
+  ~Instance() {
+    log().notice("Called ApiManager::Instance : {}", __func__);
+    std::unique_ptr<google::api_manager::Response> response(new Response());
+    request_handler_->Report(std::move(response),
+                             [this]() { log().notice("Report returns"); });
+  }
 };
 }
 }
@@ -309,11 +335,11 @@ class ApiManagerConfig : public HttpFilterConfigFactory {
     }
 
     Http::ApiManager::ConfigPtr api_manager_config(
-        new Http::ApiManager::Config(config, server.clusterManager()));
+        new Http::ApiManager::Config(config, server));
     return [api_manager_config](
                Http::FilterChainFactoryCallbacks& callbacks) -> void {
-      callbacks.addStreamFilter(Http::StreamFilterPtr{
-          new Http::ApiManager::Instance(api_manager_config)});
+      auto instance = new Http::ApiManager::Instance(api_manager_config);
+      callbacks.addStreamFilter(Http::StreamFilterPtr{instance});
     };
   }
 };

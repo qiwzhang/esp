@@ -60,7 +60,7 @@ const int kCheckAggregationExpirationMs = 300000;
 
 // Default config for report aggregator
 const int kReportAggregationEntries = 10000;
-const int kReportAggregationFlushIntervalMs = 1000;
+const int kReportAggregationFlushIntervalMs = 10000;
 
 // The default connection timeout for check requests.
 const int kCheckDefaultTimeoutInMs = 5000;

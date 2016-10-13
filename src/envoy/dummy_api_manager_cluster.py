@@ -1,5 +1,6 @@
 from BaseHTTPServer import BaseHTTPRequestHandler
 from BaseHTTPServer import HTTPServer
+from subprocess import Popen, PIPE, STDOUT
 
 PUBLIC_KEY = '''{
  "keys": [
@@ -47,6 +48,13 @@ PUBLIC_KEY = '''{
 }
 '''
 
+def print_body(binary, expected):
+  p = Popen(['bazel-bin/src/tools/service_control_json_gen',
+          '--text',
+          '--'+expected,
+          '--stdin'], stdin=PIPE)
+  p.communicate(input=binary)
+
 class Handler(BaseHTTPRequestHandler):
   def do_GET(self):
     self.handle_request("GET")
@@ -54,8 +62,10 @@ class Handler(BaseHTTPRequestHandler):
   def do_POST(self):
     self.handle_request("POST")
 
+
+
   def handle_request(self, method):
-    print method, self.path, self.headers.items()
+    print(method, self.path, self.headers.items())
     url = self.headers.get('x-api-manager-url', '')
     if url == 'https://www.googleapis.com/service_accounts/v1/jwk/loadtest@esp-test-client.iam.gserviceaccount.com':
       self.send_response(200)
@@ -63,6 +73,13 @@ class Handler(BaseHTTPRequestHandler):
       self.end_headers()
       self.wfile.write(PUBLIC_KEY)
     else:
+      content_len = self.headers.getheader('content-length', 0)
+      post_body = self.rfile.read(int(content_len))
+      if url.endswith(":report"):
+        print_body(post_body, "report_request")
+      elif url.endswith(":check"):
+        print_body(post_body, "check_request")
+
       self.send_response(200)
       self.send_header('Content-Length', "0")
       self.end_headers()

@@ -5,6 +5,7 @@
 #include "common/common/logger.h"
 #include "envoy/upstream/cluster_manager.h"
 #include "include/api_manager/env_interface.h"
+#include "server/server.h"
 
 namespace Http {
 namespace ApiManager {
@@ -12,10 +13,12 @@ namespace ApiManager {
 class Env : public google::api_manager::ApiManagerEnvInterface,
             public Logger::Loggable<Logger::Id::http> {
  private:
+  Server::Instance& server;
   Upstream::ClusterManager& cm_;
 
  public:
-  Env(Upstream::ClusterManager& cm) : cm_(cm){};
+  Env(Server::Instance& server)
+      : server(server), cm_(server.clusterManager()){};
 
   virtual void Log(LogLevel level, const char* message) override;
   virtual google::api_manager::AsyncGrpcQueue* GetAsyncQueue() override;
