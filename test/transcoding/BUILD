@@ -45,16 +45,30 @@ cc_binary(
     name = "bookstore-server",
     testonly = 1,
     srcs = ["bookstore-server.cc"],
-    deps = [":bookstore"],
+    linkopts = [
+        "-ldl",
+        "-lssl",
+        "-lcrypto",
+    ],
+    deps = [
+        ":bookstore",
+        "//external:grpc++",
+    ],
 )
 
 cc_binary(
     name = "bookstore-client",
     testonly = 1,
     srcs = ["bookstore-client.cc"],
-    linkopts = ["-lm"],
+    linkopts = [
+        "-lm",
+        "-ldl",
+        "-lssl",
+        "-lcrypto",
+    ],
     deps = [
         ":bookstore",
+        "//external:grpc++",
         "//external:protobuf",
         "//external:gflags",
     ],

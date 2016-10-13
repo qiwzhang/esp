@@ -26,18 +26,30 @@
 #
 # A Bazel (http://bazel.io) workspace for the Google Cloud Endpoints runtime.
 
-load("//third_party/nginx:build.bzl", "nginx_repositories")
+load("//third_party/nginx:build.bzl", "nginx_repositories_pcre", "nginx_repositories_zlib", "nginx_repositories_pkgoss")
 
-nginx_repositories(
-    bind = True,
-    nginx = "@//third_party/nginx",
-)
+nginx_repositories_pcre(True)
+nginx_repositories_zlib(True)
+#packaging
+nginx_repositories_pkgoss("@//third_party/nginx")
 
 # Required by gRPC.
 bind(
     name = "libssl",
-    actual = "//tools:ssl",
+    actual = "@openssl_git//:ssl",
 )
+
+# BoringSSL doesn't build with envoy
+bind(
+    name = "boringssl_crypto",
+    actual = "@openssl_git//:crypto",
+)
+
+bind(
+    name = "boringssl_ssl",
+    actual = "@openssl_git//:ssl",
+)
+
 
 # Though GRPC has BUILD file, our own BUILD.grpc file is needed since it contains
 # more targets including testing server and client.
@@ -280,11 +292,19 @@ bind(
 )
 
 new_git_repository(
+    name = "openssl_git",
+    remote = "https://github.com/openssl/openssl.git",
+    commit = "e216bf9d7ca761718f34e8b3094fcb32c7a143e4",
+    build_file = "third_party/BUILD.openssl",
+)
+
+new_git_repository(
     name = "envoy_git",
     remote = "https://github.com/lyft/envoy.git",
     commit = "55b82cdf038f1546b058b9a3524730dd1c0c3521",
     build_file = "third_party/BUILD.envoy",
 )
+
 
 #
 # Go dependencies
