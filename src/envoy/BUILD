@@ -9,7 +9,9 @@ cc_binary(
     deps = [
         "//external:protobuf",
         "//include:api_manager",
+        "//src/api_manager/grpc:zero_copy_stream",
         "//external:servicecontrol",
+        "//external:grpc",
         "@envoy_git//:envoy-common"
     ],
     linkstatic=1,

@@ -7,8 +7,10 @@
 #include "common/http/headers.h"
 #include "common/http/utility.h"
 #include "envoy/server/instance.h"
+#include "grpc/grpc.h"
 #include "include/api_manager/api_manager.h"
 #include "server/config/network/http_connection_manager.h"
+#include "src/api_manager/grpc/zero_copy_stream.h"
 
 namespace Http {
 namespace ApiManager {
@@ -145,7 +147,8 @@ class Instance : public Http::StreamFilter,
   bool initiating_call_;
 
   std::unique_ptr<google::api_manager::transcoding::Transcoder> transcoder_;
-  EnvoyZeroCopyInputStream request_in_, response_in_;
+  EnvoyZeroCopyInputStream request_in_;
+  google::api_manager::grpc::GrpcZeroCopyInputStream response_in_;
 
  public:
   Instance(ConfigPtr config)
@@ -249,7 +252,21 @@ class Instance : public Http::StreamFilter,
     log().notice("Called ApiManager::Instance : {} ({}, {})", __func__,
                  data.length(), end_stream);
     if (transcoder_) {
-      response_in_.Add(data);
+      data.drain(5);
+      uint64_t num = data.getRawSlices(nullptr, 0);
+      std::vector<Buffer::RawSlice> raw_slices(num);
+      data.getRawSlices(raw_slices.data(), num);
+
+      std::vector<gpr_slice> gpr_slices;
+      for (const auto& slice : raw_slices) {
+        gpr_slices.push_back(gpr_slice_from_copied_buffer(
+            reinterpret_cast<const char*>(slice.mem_), slice.len_));
+      }
+
+      response_in_.AddMessage(
+          grpc_raw_byte_buffer_create(gpr_slices.data(), gpr_slices.size()),
+          true);
+      response_in_.Finish();
 
       data.drain(data.length());
 
@@ -257,11 +274,10 @@ class Instance : public Http::StreamFilter,
 
       const void* out;
       int size;
-      while (output->Next(&out, &size)) {
+      while (output->Next(&out, &size) && size > 0) {
         log().notice(
             "Called ApiManager::Instance : response out {} bytes, status: {}",
             size, transcoder_->ResponseStatus().error_code());
-        if (size == 0) break;
         data.add(out, size);
       }
     }
