@@ -3,6 +3,7 @@
   "producerProjectId": "MY_PROJECT_ID",
   "apis": [
     {
+      "name": "endpoints.examples.bookstore.Bookstore",
       "methods": [
         {
           "name": "ListShelves",
@@ -881,7 +882,7 @@
     "rules": [
       {
         "allowUnregisteredCalls": true,
-        "selector": "ListShelves"
+        "selector": "endpoints.examples.bookstore.Bookstore.ListShelves"
       },
       {
         "selector": "CreateShelf"
