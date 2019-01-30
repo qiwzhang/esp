@@ -77,6 +77,10 @@ class NgxEspGrpcServerCall : public grpc::ServerCall {
   virtual void UpdateRequestMessageStat(int64_t size);
   virtual void UpdateResponseMessageStat(int64_t size);
 
+  virtual void SetRstStream(std::function<void()> rst_stream) override {
+    rst_stream_ = rst_stream;
+  }
+
  protected:
   // Converts the request body into gRPC messages and outputs the raw slices.
   // The output slices are appended to the specified out vector.
@@ -114,6 +118,7 @@ class NgxEspGrpcServerCall : public grpc::ServerCall {
   static void OnDownstreamPreread(ngx_http_request_t* r);
   static void OnDownstreamReadable(ngx_http_request_t* r);
   static void OnDownstreamWriteable(ngx_http_request_t* r);
+  static void OnHttpBlockReading(ngx_http_request_t *r);
 
   void CompletePendingRead(bool proceed, utils::Status status);
 
@@ -139,6 +144,7 @@ class NgxEspGrpcServerCall : public grpc::ServerCall {
 
   // If true, sending of the headers will be delayed.
   bool delay_downstream_headers_;
+  std::function<void()> rst_stream_;
 };
 
 }  // namespace nginx

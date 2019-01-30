@@ -341,6 +341,25 @@ void NgxEspGrpcServerCall::OnDownstreamWriteable(ngx_http_request_t *r) {
   }
 }
 
+void NgxEspGrpcServerCall::OnHttpBlockReading(ngx_http_request_t *r)
+{
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "http read is blocked by ESP");
+    if (r->connection->error) {
+      ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                     "RST_STREAM is received");
+      ngx_esp_request_ctx_t *ctx = ngx_http_esp_ensure_module_ctx(r);
+      NgxEspGrpcServerCall *server_call = ctx->grpc_server_call;
+      if (server_call->rst_stream_) {
+        std::function<void()> rst_stream;
+        std::swap(rst_stream, server_call->rst_stream_);
+        rst_stream();
+      }
+    }
+
+    ngx_http_block_reading(r);
+}
+
 // This is the proxy's nginx post_handler (i.e. it's passed to
 // ngx_http_read_client_request_body to get data flowing from nginx to
 // this module)
@@ -364,7 +383,7 @@ void NgxEspGrpcServerCall::OnDownstreamPreread(ngx_http_request_t *r) {
     return;
   }
 
-  r->read_event_handler = &ngx_http_block_reading;
+  r->read_event_handler = OnHttpBlockReading;
 }
 
 // This is the proxy's nginx read_event_handler which will be invoked once
@@ -524,7 +543,7 @@ void NgxEspGrpcServerCall::RunPendingRead() {
     // continuation, so that flow control works correctly.
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r_->connection->log, 0,
                    "NgxEspGrpcServerCall::RunPendingRead: Blocking reads");
-    r_->read_event_handler = &ngx_http_block_reading;
+    r_->read_event_handler = OnHttpBlockReading;
   }
 }
 

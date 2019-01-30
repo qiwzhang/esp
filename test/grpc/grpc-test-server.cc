@@ -200,6 +200,7 @@ class EchoStreamCall final : public CorkableCall {
   }
 
   void StartFinish() {
+    return;
     streamer_.Finish(Status(StatusCode(request_.return_status().code()),
                             request_.return_status().details()),
                      MakeTag([this](bool ok) { delete this; }));

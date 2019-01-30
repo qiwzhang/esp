@@ -61,6 +61,8 @@ class ServerCall {
 
   virtual void UpdateRequestMessageStat(int64_t size) = 0;
   virtual void UpdateResponseMessageStat(int64_t size) = 0;
+
+  virtual void SetRstStream(std::function<void()> rst_stream) = 0;
 };
 
 }  // namespace grpc

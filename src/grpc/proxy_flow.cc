@@ -278,6 +278,9 @@ void ProxyFlow::StartUpstreamWritesDone(std::shared_ptr<ProxyFlow> flow,
     }
     flow->sent_upstream_writes_done_ = true;
   }
+  flow->server_call_->SetRstStream([flow]() {
+                                     StartUpstreamFinish(flow);
+                                   });
   flow->upstream_reader_writer_->WritesDone(
       flow->async_grpc_queue_->MakeTag([flow, status](bool ok) {
         if (!ok) {

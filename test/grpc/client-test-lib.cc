@@ -35,6 +35,7 @@
 #include <random>
 #include <string>
 #include <type_traits>
+#include <unistd.h>
 
 #include <grpc++/alarm.h>
 #include <grpc++/grpc++.h>
@@ -385,6 +386,9 @@ class EchoStream {
       return;
     }
     es->started_finish_ = true;
+    sleep(5);
+    es->ctx_.TryCancel();
+    sleep(5);
     es->rpc_->Finish(&es->status_, new Tag([es](bool ok) {
       TestResult result;
       if (ok) {
