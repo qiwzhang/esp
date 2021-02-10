@@ -87,6 +87,17 @@ cc_binary(
 )
 
 cc_binary(
+    name = "grpc_call_service_control",
+    srcs = [
+        "grpc_call_service_control.cc",
+    ],
+    deps = [
+        "//external:servicecontrol",
+	"//external:grpc++",	
+    ],
+)
+
+cc_binary(
     name = "proto_pass_perf",
     srcs = [
         "proto_pass_perf.cc",

@@ -492,6 +492,7 @@ cc_proto_library(
         ":service_config",
     ],
     protoc = "//external:protoc",
+    use_grpc_plugin = True,
     default_runtime = "//external:protobuf",
 )
 
